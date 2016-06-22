@@ -10,13 +10,14 @@ MAP_HEIGHT = 45
 ROOM_MAX_SIZE = 10
 ROOM_MIN_SIZE = 6
 MAX_ROOMS = 30
+MAX_ROOM_MONSTERS = 3
+
+LIMIT_FPS = 20
 
 color_dark_wall = libtcod.Color(0, 0, 100)
 color_dark_ground = libtcod.Color(50, 50, 150)
 
-MAX_ROOM_MONSTERS = 3
 
-LIMIT_FPS = 20
 
 
 class Fighter:
@@ -27,16 +28,6 @@ class Fighter:
         self.defense = defense
         self.power = power
         self.death_function = death_function
-
-    def take_damage(self, damage):
-        #apply damage if possible
-        if damage > 0:
-            self.hp -= damage
-
-        if self.hp <= 0:
-                function = self.death_function
-                if function is not None:
-                    function(self.owner)
 
     def attack(self, target):
         #a simple formula for attack damage
@@ -49,16 +40,25 @@ class Fighter:
         else:
             print self.owner.name.capitalize() + ' attacks ' + target.name + ' but it has no effect!'
 
+    def take_damage(self, damage):
+        #apply damage if possible
+        if damage > 0:
+            self.hp -= damage
+
+        if self.hp <= 0:
+                function = self.death_function
+                if function is not None:
+                    function(self.owner)
+
+
 class MonsterBase:
     def take_turn(self):
         monster = self.owner
         if monster.distance_to(player) <= 12:
-
-            #move towards player if far away
             if monster.distance_to(player) >= 2:
                 monster.move_towards(player.x, player.y)
 
-            #close enough, attack! (if the player is still alive.)
+            #Attack Adjacent Players
             elif player.fighter.hp > 0:
                 monster.fighter.attack(player)
 
@@ -79,8 +79,6 @@ class Rectangle:
             self.y1 <= other.y2 and self.y2 >= other.y1)
 
 class Object:
-    #this is a generic object: the player, a monster, an item, the stairs...
-    #it's always represented by a character on screen.
     def __init__(self, x, y, char, name, color, blocks=False, fighter=None, ai=None):
         self.x = x
         self.y = y
@@ -90,11 +88,11 @@ class Object:
         self.blocks = blocks
 
         self.fighter = fighter
-        if self.fighter:  #let the fighter component know who owns it
+        if self.fighter:
             self.fighter.owner = self
 
         self.ai = ai
-        if self.ai:  #let the AI component know who owns it
+        if self.ai:
             self.ai.owner = self
 
     def move(self, dx, dy):
@@ -110,7 +108,6 @@ class Object:
         libtcod.console_put_char(con, self.x, self.y, ' ', libtcod.BKGND_NONE)
 
     def distance_to(self, other):
-        #return the distance to another object
         dx = other.x - self.x
         dy = other.y - self.y
         return math.sqrt(dx ** 2 + dy ** 2)
@@ -129,6 +126,7 @@ class Object:
 
     def send_to_back(self):
         #make this object be drawn first, so all others appear above it if they're in the same tile.
+        #there must be a better way to do this, preferably with layers
         global objects
         objects.remove(self)
         objects.insert(0, self)
@@ -232,7 +230,6 @@ def create_h_tunnel(x1, x2, y):
 
 def create_v_tunnel(y1, y2, x):
     global map
-    #vertical tunnel
     for y in range(min(y1, y2), max(y1, y2) + 1):
         map[x][y].blocked = False
         map[x][y].block_sight = False
@@ -257,7 +254,6 @@ def render_all():
     global color_light_wall
     global color_light_ground
 
-    #go through all tiles, and set their background color
     for y in range(MAP_HEIGHT):
         for x in range(MAP_WIDTH):
             wall = map[x][y].block_sight
