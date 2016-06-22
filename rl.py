@@ -386,7 +386,6 @@ while not libtcod.console_is_window_closed():
 
     render_all()
 
-    libtcod.console_blit(con, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0)
     libtcod.console_flush()
 
     for object in objects:
