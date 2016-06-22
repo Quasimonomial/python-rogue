@@ -327,7 +327,7 @@ def player_move_or_attack(dx, dy):
     #try to find an attackable object there
     target = None
     for object in objects:
-        if object.x == x and object.y == y:
+        if object.fighter and object.x == x and object.y == y:
             target = object
             break
 
@@ -336,7 +336,6 @@ def player_move_or_attack(dx, dy):
         player.fighter.attack(target)
     else:
         player.move(dx, dy)
-        fov_recompute = True
 
 
 def player_death(player):
