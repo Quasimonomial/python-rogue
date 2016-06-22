@@ -1,4 +1,5 @@
 import libtcodpy as libtcod
+import math
 
 SCREEN_WIDTH = 80
 SCREEN_HEIGHT = 50
@@ -17,6 +18,49 @@ MAX_ROOM_MONSTERS = 3
 
 LIMIT_FPS = 20
 
+
+class Fighter:
+    #combat can happen to this class of object
+    def __init__(self, hp, defense, power, death_function=None):
+        self.max_hp = hp
+        self.hp = hp
+        self.defense = defense
+        self.power = power
+        self.death_function = death_function
+
+    def take_damage(self, damage):
+        #apply damage if possible
+        if damage > 0:
+            self.hp -= damage
+
+        if self.hp <= 0:
+                function = self.death_function
+                if function is not None:
+                    function(self.owner)
+
+    def attack(self, target):
+        #a simple formula for attack damage
+        damage = self.power - target.fighter.defense
+
+        if damage > 0:
+            #make the target take some damage
+            print self.owner.name.capitalize() + ' attacks ' + target.name + ' for ' + str(damage) + ' hit points.'
+            target.fighter.take_damage(damage)
+        else:
+            print self.owner.name.capitalize() + ' attacks ' + target.name + ' but it has no effect!'
+
+class MonsterBase:
+    def take_turn(self):
+        monster = self.owner
+        if monster.distance_to(player) <= 12:
+
+            #move towards player if far away
+            if monster.distance_to(player) >= 2:
+                monster.move_towards(player.x, player.y)
+
+            #close enough, attack! (if the player is still alive.)
+            elif player.fighter.hp > 0:
+                monster.fighter.attack(player)
 
 class Rectangle:
     def __init__(self, x, y, w, h):
@@ -37,13 +81,21 @@ class Rectangle:
 class Object:
     #this is a generic object: the player, a monster, an item, the stairs...
     #it's always represented by a character on screen.
-    def __init__(self, x, y, char, name, color, blocks=False):
+    def __init__(self, x, y, char, name, color, blocks=False, fighter=None, ai=None):
         self.x = x
         self.y = y
         self.char = char
         self.name = name
         self.color = color
         self.blocks = blocks
+
+        self.fighter = fighter
+        if self.fighter:  #let the fighter component know who owns it
+            self.fighter.owner = self
+
+        self.ai = ai
+        if self.ai:  #let the AI component know who owns it
+            self.ai.owner = self
 
     def move(self, dx, dy):
         if not is_blocked(self.x + dx, self.y + dy):
@@ -56,6 +108,31 @@ class Object:
 
     def clear(self):
         libtcod.console_put_char(con, self.x, self.y, ' ', libtcod.BKGND_NONE)
+
+    def distance_to(self, other):
+        #return the distance to another object
+        dx = other.x - self.x
+        dy = other.y - self.y
+        return math.sqrt(dx ** 2 + dy ** 2)
+
+    def move_towards(self, target_x, target_y):
+        #vector from this object to the target, and distance
+        dx = target_x - self.x
+        dy = target_y - self.y
+        distance = math.sqrt(dx ** 2 + dy ** 2)
+
+        #normalize it to length 1 (preserving direction), then round it and
+        #convert to integer so the movement is restricted to the map grid
+        dx = int(round(dx / distance))
+        dy = int(round(dy / distance))
+        self.move(dx, dy)
+
+    def send_to_back(self):
+        #make this object be drawn first, so all others appear above it if they're in the same tile.
+        global objects
+        objects.remove(self)
+        objects.insert(0, self)
+
 
 class Tile:
     def __init__(self, blocked, block_sight = None):
@@ -168,7 +245,11 @@ def place_objects(room):
         y = libtcod.random_get_int(0, room.y1 + 1, room.y2 - 1)
 
         if not is_blocked(x, y):
-            monster = Object(x, y, 'g', "gentrification_spirit", libtcod.light_sepia, True)
+            fighter_component = Fighter(hp=10, defense=0, power=3, death_function=monster_death)
+            ai_component = MonsterBase()
+
+            monster = Object(x, y, 'g', "gentrification_spirit", libtcod.light_sepia, True,
+            fighter=fighter_component, ai=ai_component)
 
             objects.append(monster)
 
@@ -186,10 +267,17 @@ def render_all():
                 libtcod.console_set_char_background(con, x, y, color_dark_ground, libtcod.BKGND_SET )
 
     for object in objects:
-        object.draw()
+        if object != player:
+            object.draw()
+    player.draw()
 
     #blit the contents of "con" to the root console
     libtcod.console_blit(con, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0)
+
+    #show the player's stats
+    libtcod.console_set_default_foreground(con, libtcod.white)
+    libtcod.console_print_ex(0, 1, SCREEN_HEIGHT - 2, libtcod.BKGND_NONE, libtcod.LEFT,
+        'HP: ' + str(player.fighter.hp) + '/' + str(player.fighter.max_hp))
 
 def handle_keys():
     key = libtcod.console_wait_for_keypress(True)
@@ -245,10 +333,34 @@ def player_move_or_attack(dx, dy):
 
     #attack if target found, move otherwise
     if target is not None:
-        print 'The ' + target.name + ' laughs at your puny efforts to attack him!'
+        player.fighter.attack(target)
     else:
         player.move(dx, dy)
         fov_recompute = True
+
+
+def player_death(player):
+    #the game ended!
+    global game_state
+    print 'You died!'
+    game_state = 'dead'
+
+    #for added effect, transform the player into a corpse!
+    player.char = '%'
+    player.color = libtcod.dark_red
+
+def monster_death(monster):
+    #transform it into a nasty corpse! it doesn't block, can't be
+    #attacked and doesn't move
+    print monster.name.capitalize() + ' is dead!'
+    monster.char = '%'
+    monster.color = libtcod.dark_red
+    monster.blocks = False
+    monster.fighter = None
+    monster.ai = None
+    monster.name = 'remains of ' + monster.name
+    monster.send_to_back()
+
 
 #############################################
 # Initialization & Main Loop
@@ -259,7 +371,9 @@ libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'python/libtcod tutorial'
 libtcod.sys_set_fps(LIMIT_FPS)
 con = libtcod.console_new(SCREEN_WIDTH, SCREEN_HEIGHT)
 
-player = Object(0, 0, '@', "player", libtcod.white, True)
+fighter_component = Fighter(hp=350, defense=2, power=5, death_function=player_death)
+
+player = Object(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
 
 objects = [player]
 
@@ -285,5 +399,5 @@ while not libtcod.console_is_window_closed():
   #let monsters take their turn
     if game_state == 'playing' and player_action != 'didnt-take-turn':
         for object in objects:
-            if object != player:
-                print 'The ' + object.name + ' growls!'
+            if object.ai:
+                object.ai.take_turn()
