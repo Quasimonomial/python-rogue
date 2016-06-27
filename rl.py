@@ -284,10 +284,6 @@ def render_all():
     libtcod.console_set_default_background(panel, libtcod.black)
     libtcod.console_clear(panel)
 
-    #show the player's stats
-    render_bar(1, 1, BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
-        libtcod.light_red, libtcod.darker_red)
-
     #print the game messages, one line at a time
     y = 1
     for (line, color) in game_msgs:
@@ -295,12 +291,19 @@ def render_all():
         libtcod.console_print_ex(panel, MSG_X, y, libtcod.BKGND_NONE, libtcod.LEFT, line)
         y += 1
 
+    #show the player's stats
+    render_bar(1, 1, BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
+    libtcod.light_red, libtcod.darker_red)
+
+    #display names of objects under the mouse
+    libtcod.console_set_default_foreground(panel, libtcod.light_gray)
+    libtcod.console_print_ex(panel, 1, 0, libtcod.BKGND_NONE, libtcod.LEFT, get_names_under_mouse())
+
     #blit the contents of "panel" to the root console
     libtcod.console_blit(panel, 0, 0, SCREEN_WIDTH, PANEL_HEIGHT, 0, 0, PANEL_Y)
 
-
 def handle_keys():
-    key = libtcod.console_wait_for_keypress(True)
+    global key
 
     if key.vk == libtcod.KEY_ENTER and key.lalt:
         #Alt+Enter: toggle fullscreen
@@ -336,6 +339,18 @@ def handle_keys():
             player_move_or_attack(-1, 0)
         else:
             return 'didnt-take-turn'
+
+def get_names_under_mouse():
+    global mouse
+
+    #return a string with the names of all objects under the mouse
+    (x, y) = (mouse.cx, mouse.cy)
+
+    names = [obj.name for obj in objects
+        if obj.x == x and obj.y == y]
+
+    names = ', '.join(names)  #join the names, separated by commas
+    return names.capitalize()
 
 def player_move_or_attack(dx, dy):
     global fov_recompute
@@ -434,7 +449,11 @@ make_map()
 game_state = 'playing'
 player_action = None
 
+mouse = libtcod.Mouse()
+key = libtcod.Key()
+
 while not libtcod.console_is_window_closed():
+    libtcod.sys_check_for_event(libtcod.EVENT_KEY_PRESS|libtcod.EVENT_MOUSE,key,mouse)
 
     render_all()
 
